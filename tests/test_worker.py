@@ -80,14 +80,17 @@ _SEEDED_PHASES = [
 def _make_inputs(
     tmp_path: Path, settings: Settings, *, session_has_jsonl: bool, slot_uid: int | None = None
 ) -> tuple[worker.TaskInputs, SimpleNamespace]:
-    session_dir = tmp_path / "session"
+    root = tmp_path / "workspace"
+    root.mkdir()
+    session_dir = root / "session"
     session_dir.mkdir()
     if session_has_jsonl:
         (session_dir / "foo.jsonl").write_text("{}\n", encoding="utf-8")
-    repo_dir = tmp_path / "repo"
+    repo_dir = root / "repo"
     repo_dir.mkdir()
 
     workspace = SimpleNamespace(
+        root=root,
         session_dir=session_dir,
         repo_dir=repo_dir,
         branch="robomp/issue-1",
@@ -241,6 +244,58 @@ async def test_run_rpc_omits_home_when_agent_home_absent(
     assert client_kwargs["env"]["GITHUB_WEBHOOK_SECRET"] == ""
     assert client_kwargs["env"]["ROBOMP_REPLAY_TOKEN"] == ""
     assert client_kwargs["env"]["ROBOMP_GH_PROXY_HMAC_KEY"] == ""
+
+
+@pytest.mark.asyncio
+async def test_run_rpc_uses_workspace_xdg_dirs_without_slot(tmp_path: Path, settings: Settings) -> None:
+    inputs, bindings = _make_inputs(tmp_path, settings, session_has_jsonl=False, slot_uid=None)
+    loop = asyncio.new_event_loop()
+    try:
+        worker._run_rpc_blocking(
+            inputs,
+            task_kind="triage_issue",
+            prompt="x",
+            loop=loop,
+            bindings=bindings,  # type: ignore[arg-type]
+        )
+    finally:
+        loop.close()
+
+    env = _FakeRpcClient.instances[0].kwargs["env"]
+    xdg_root = inputs.workspace.root / ".omp-xdg"
+    for key in ("XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
+        path = Path(env[key])
+        assert path.is_relative_to(xdg_root)
+        assert (path / "omp").is_dir()
+
+
+@pytest.mark.asyncio
+async def test_run_rpc_chowns_workspace_xdg_dirs_for_slot(
+    tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chown_calls: list[tuple[Path, int, int]] = []
+    monkeypatch.setattr(worker.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(worker.os, "chown", lambda path, uid, gid: chown_calls.append((Path(path), uid, gid)))
+
+    inputs, bindings = _make_inputs(tmp_path, settings, session_has_jsonl=False, slot_uid=2001)
+    loop = asyncio.new_event_loop()
+    try:
+        worker._run_rpc_blocking(
+            inputs,
+            task_kind="triage_issue",
+            prompt="x",
+            loop=loop,
+            bindings=bindings,  # type: ignore[arg-type]
+        )
+    finally:
+        loop.close()
+
+    env = _FakeRpcClient.instances[0].kwargs["env"]
+    expected_dirs = set()
+    for key in ("XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
+        base = Path(env[key])
+        expected_dirs.update({base, base / "omp"})
+    assert set(chown_calls) == {(path, 0, 2001) for path in expected_dirs}
 
 
 @pytest.mark.asyncio

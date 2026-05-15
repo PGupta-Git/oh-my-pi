@@ -113,6 +113,26 @@ class JsonFormatter(logging.Formatter):
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
+# Dashboard polls these endpoints every couple seconds; mute them in access logs.
+_ACCESS_MUTE_PATHS = ("/api/status", "/api/logs", "/healthz", "/readyz")
+
+
+class _MuteDashboardPolling(logging.Filter):
+    """Drop uvicorn.access lines for high-frequency dashboard polling."""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003
+        args = record.args
+        # uvicorn.access format: '%s - "%s %s HTTP/%s" %d'
+        # args = (client_addr, method, full_path, http_version, status_code)
+        if isinstance(args, tuple) and len(args) >= 3:
+            method, path = args[1], args[2]
+            if method == "GET" and isinstance(path, str):
+                base = path.split("?", 1)[0]
+                if base in _ACCESS_MUTE_PATHS:
+                    return False
+        return True
+
+
 _INITIALIZED = False
 
 
@@ -143,6 +163,7 @@ def configure_logging(log_dir: Path | None = None, level: int = logging.INFO) ->
 
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").addFilter(_MuteDashboardPolling())
     _INITIALIZED = True
 
 

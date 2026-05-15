@@ -183,6 +183,30 @@ def _build_extra_env(settings: Settings) -> dict[str, str]:
     return env
 
 
+def _prepare_xdg_dirs(workspace: Workspace, slot_uid: int | None) -> dict[str, str]:
+    """Prepare per-workspace XDG homes for mutable omp state."""
+    xdg_root = workspace.root / ".omp-xdg"
+    homes = {
+        "XDG_DATA_HOME": xdg_root / "data",
+        "XDG_STATE_HOME": xdg_root / "state",
+        "XDG_CACHE_HOME": xdg_root / "cache",
+    }
+    should_chown = slot_uid is not None and os.geteuid() == 0
+    for base in homes.values():
+        omp_dir = base / "omp"
+        base.mkdir(parents=True, exist_ok=True)
+        omp_dir.mkdir(parents=True, exist_ok=True)
+        if not should_chown:
+            continue
+        for path in (base, omp_dir):
+            try:
+                os.chown(path, 0, slot_uid)
+                path.chmod(0o770)
+            except OSError as exc:
+                log.warning("Failed to make XDG directory accessible to slot user %s: %s", path, exc)
+    return {key: str(path) for key, path in homes.items()}
+
+
 def _has_prior_session(session_dir: Path) -> bool:
     """Return True iff `session_dir` already contains an omp JSONL transcript.
 
@@ -303,6 +327,7 @@ def _run_rpc_blocking(
             log.debug("delta", extra={"issue": bindings.issue_key, "delta": str(ev.get("delta", ""))[:200]})
 
     rpc_env = _build_extra_env(settings)
+    rpc_env.update(_prepare_xdg_dirs(inputs.workspace, inputs.slot_uid))
     resuming = _has_prior_session(bindings.workspace.session_dir)
     extra_args: tuple[str, ...] = ("--continue",) if resuming else ()
     log.info(
