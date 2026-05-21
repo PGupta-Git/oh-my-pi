@@ -21,7 +21,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { getAddonFilenames, resolveLoaderCandidates, shouldStageNodeModulesAddon } from "../native/loader-state.js";
+import {
+	getAddonFilenames,
+	isSupportedPlatformTag,
+	resolveLoaderCandidates,
+	shouldStageNodeModulesAddon,
+} from "../native/loader-state.js";
 import packageJson from "../package.json" with { type: "json" };
 
 const winNodeModulesNativeDir = "C:\\Users\\Admin\\node_modules\\@oh-my-pi\\pi-natives\\native";
@@ -125,6 +130,15 @@ describe("windows native addon staging", () => {
 		const nodeModulesBaseline = path.join(posixNodeModulesNativeDir, "pi_natives.linux-x64-baseline.node");
 		expect(candidates).not.toContain(versionedBaseline);
 		expect(candidates).toContain(nodeModulesBaseline);
+	});
+});
+
+describe("Windows ARM64 native support", () => {
+	it("accepts win32-arm64 and resolves the default addon filename", () => {
+		expect(isSupportedPlatformTag("win32-arm64")).toBe(true);
+		expect(getAddonFilenames({ tag: "win32-arm64", arch: "arm64", variant: null })).toEqual([
+			"pi_natives.win32-arm64.node",
+		]);
 	});
 });
 

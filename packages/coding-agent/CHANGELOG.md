@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Windows ARM64 release binary wiring and installer selection so Windows ARM machines download `omp-windows-arm64.exe` instead of relying on the x64 build under Prism. ([#1260](https://github.com/can1357/oh-my-pi/issues/1260))
+
 ## [15.2.1] - 2026-05-21
 
 ### Fixed

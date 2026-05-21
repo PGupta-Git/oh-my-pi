@@ -18,6 +18,8 @@ export interface DetectCompiledBinaryInput {
 
 export function detectCompiledBinary(input: DetectCompiledBinaryInput): boolean;
 
+export function isSupportedPlatformTag(platformTag: string): boolean;
+
 export interface GetAddonFilenamesInput {
 	tag: string;
 	arch: string;

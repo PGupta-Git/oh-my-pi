@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Windows ARM64 (`win32-arm64`) to the native addon support matrix so Bun installs and compiled binaries can load bundled pi-natives on Snapdragon/Surface devices. ([#1260](https://github.com/can1357/oh-my-pi/issues/1260))
+
 ## [15.0.2] - 2026-05-15
 
 ### Added

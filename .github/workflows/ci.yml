@@ -126,6 +126,7 @@ jobs:
                - { os: macos-15-intel, platform: darwin, arch: x64, variant: baseline }
                - { os: macos-14, platform: darwin, arch: arm64 }
                - { os: windows-latest, platform: win32, arch: x64, variant: baseline }
+               - { os: windows-latest, platform: win32, arch: arm64, target: aarch64-pc-windows-msvc }
       runs-on: ${{ matrix.os }}
       steps:
          - uses: actions/checkout@v4
@@ -266,6 +267,13 @@ jobs:
                     target_id: win32-x64,
                     binary_path: packages/coding-agent/binaries/omp-windows-x64.exe,
                  }
+               - {
+                    os: windows-latest,
+                    platform: win32,
+                    arch: arm64,
+                    target_id: win32-arm64,
+                    binary_path: packages/coding-agent/binaries/omp-windows-arm64.exe,
+                 }
       runs-on: ${{ matrix.os }}
       permissions:
          contents: read
@@ -297,7 +305,7 @@ jobs:
               HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" "${{ matrix.binary_path }}" --version
               HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" "${{ matrix.binary_path }}" --smoke-test
          - name: Smoke release binary (Windows)
-           if: runner.os == 'Windows'
+           if: runner.os == 'Windows' && matrix.arch != 'arm64'
            shell: pwsh
            run: |
               $runtimeDir = Join-Path $env:TEMP ("omp-runtime-" + [System.Guid]::NewGuid().ToString("N"))

@@ -327,7 +327,7 @@ Vuln lookups answer with vendor data, not blog summaries.
 Three crates, one platform-tagged N-API addon. Search, shell, AST, highlight, PTY, image decode, BPE counting — all in-process on the libuv pool. No fork/exec on the hot path.
 
 - Crates: `pi-natives`, `pi-shell`, `pi-ast`
-- Platforms: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`
+- Platforms: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`, `win32-arm64`
 
 The table below is a per-module breakdown that intentionally omits glue and tests.
 

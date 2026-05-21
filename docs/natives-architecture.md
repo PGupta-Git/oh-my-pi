@@ -49,6 +49,7 @@ Current capability groups in the generated API include:
   - `darwin-x64`
   - `darwin-arm64`
   - `win32-x64`
+  - `win32-arm64`
 - x64 can use CPU variants:
   - `modern` (AVX2-capable)
   - `baseline` (fallback)

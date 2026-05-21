@@ -19,8 +19,20 @@ $ErrorActionPreference = "Stop"
 $Repo = "can1357/oh-my-pi"
 $Package = "@oh-my-pi/pi-coding-agent"
 $InstallDir = if ($env:PI_INSTALL_DIR) { $env:PI_INSTALL_DIR } else { "$env:LOCALAPPDATA\omp" }
-$BinaryName = "omp-windows-x64.exe"
 $MinimumBunVersion = "1.3.14"
+
+function Get-BinaryName {
+    $archValues = @($env:PROCESSOR_ARCHITECTURE, $env:PROCESSOR_ARCHITEW6432) | Where-Object { $_ }
+    if ($archValues -contains "ARM64") {
+        return "omp-windows-arm64.exe"
+    }
+    if ($archValues -contains "AMD64") {
+        return "omp-windows-x64.exe"
+    }
+
+    $archLabel = if ($archValues.Count -gt 0) { $archValues -join ", " } else { "unknown" }
+    throw "Unsupported Windows architecture: $archLabel"
+}
 
 function Test-BunInstalled {
     try {
@@ -256,6 +268,7 @@ function Install-Binary {
 
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
+    $BinaryName = Get-BinaryName
     # Download binary
     $BinaryUrl = "https://github.com/$Repo/releases/download/$Latest/$BinaryName"
     Write-Host "Downloading $BinaryName..."

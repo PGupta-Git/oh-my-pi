@@ -30,7 +30,15 @@ import { embeddedAddon } from "./embedded-addon.js";
  * post-build `--reset` stub) is the authoritative compiled-mode signal.
  */
 
-const SUPPORTED_PLATFORMS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"];
+const SUPPORTED_PLATFORMS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64", "win32-arm64"];
+
+/**
+ * @param {string} platformTag
+ * @returns {boolean}
+ */
+export function isSupportedPlatformTag(platformTag) {
+	return SUPPORTED_PLATFORMS.includes(platformTag);
+}
 
 function getNativesDir() {
 	const xdgDataHome = process.env.XDG_DATA_HOME;
@@ -428,7 +436,7 @@ export function loadNative() {
 		}
 	}
 
-	if (!SUPPORTED_PLATFORMS.includes(ctx.platformTag)) {
+	if (!isSupportedPlatformTag(ctx.platformTag)) {
 		throw new Error(
 			`Unsupported platform: ${ctx.platformTag}\n` +
 				`Supported platforms: ${SUPPORTED_PLATFORMS.join(", ")}\n` +
