@@ -1204,12 +1204,16 @@ export class TUI extends Container {
 		}
 
 		// Differential rendering can only touch what was actually visible.
-		// Any change above the previous viewport requires a full redraw so terminal
-		// scrollback ends up consistent with the new transcript state.
+		// Any change above the previous viewport cannot be reached with cursor
+		// movement sequences — the cursor cannot enter the terminal scrollback.
+		// Clamp firstChanged to the viewport top so the differential renderer
+		// operates within reachable screen rows. The scrollback entries above
+		// the viewport will be momentarily stale but remain navigable — this
+		// preserves the user's browse position instead of wiping scrollback
+		// with \x1b[3J.
 		if (firstChanged < prevViewportTop) {
-			logRedraw(`firstChanged < viewportTop (${firstChanged} < ${prevViewportTop})`);
-			fullRender(true);
-			return;
+			logRedraw(`firstChanged < viewportTop (${firstChanged} < ${prevViewportTop}), clamping`);
+			firstChanged = prevViewportTop;
 		}
 
 		// Render from first changed line to end

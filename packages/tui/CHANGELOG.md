@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed TUI differential renderer clearing terminal scrollback (`\x1b[3J`) when a component above the viewport updates (e.g. bash tool output streaming past the visible area). The renderer now clamps the repaint range to the viewport top instead of issuing a full redraw, preserving the user's scroll history. ([#1300](https://github.com/can1357/oh-my-pi/issues/1300))
+
 ## [15.2.3] - 2026-05-22
 ### Added
 

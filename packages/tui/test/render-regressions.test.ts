@@ -766,6 +766,49 @@ describe("TUI terminal-state regressions", () => {
 				tui.stop();
 			}
 		});
+
+		it("preserves scrollback when above-viewport content changes (no \x1b[3J)", async () => {
+			// 3-row terminal, 6 lines of content: top-* fills rows 0-2 (→ scrollback),
+			// bot-* fills rows 3-5 (→ visible). Changing the top component triggers
+			// firstChanged < prevViewportTop. The fix must NOT send \x1b[3J so the
+			// user's scrollback (top-A, top-B, top-C) survives the repaint.
+			const term = new VirtualTerminal(32, 3);
+			const tui = new TUI(term);
+			const top = new MutableLinesComponent(["top-A", "top-B", "top-C"]);
+			const bottom = new MutableLinesComponent(["bot-0", "bot-1", "bot-2"]);
+			tui.addChild(top);
+			tui.addChild(bottom);
+
+			try {
+				tui.start();
+				await settle(term);
+
+				// Verify initial state: top rows are in scrollback, bottom rows visible.
+				const scrollbackBefore = term.getScrollBuffer().join("\n");
+				expect(scrollbackBefore).toContain("top-A");
+				expect(scrollbackBefore).toContain("top-B");
+				expect(visible(term)[0]?.trim()).toBe("bot-0");
+
+				// Mutate the above-viewport component.
+				// firstChanged = 0 < prevViewportTop = 3 → triggers above-viewport path.
+				top.setLines(["top-X", "top-Y", "top-Z"]);
+				tui.requestRender();
+				await settle(term);
+
+				// The original scrollback content must survive — \x1b[3J was NOT sent.
+				const scrollbackAfter = term.getScrollBuffer().join("\n");
+				expect(scrollbackAfter).toContain("top-A");
+				expect(scrollbackAfter).toContain("top-B");
+
+				// Viewport must reflect current state correctly.
+				const viewport = visible(term);
+				expect(viewport[0]?.trim()).toBe("bot-0");
+				expect(viewport[1]?.trim()).toBe("bot-1");
+				expect(viewport[2]?.trim()).toBe("bot-2");
+			} finally {
+				tui.stop();
+			}
+		});
 	});
 
 	describe("overlay compositing", () => {
