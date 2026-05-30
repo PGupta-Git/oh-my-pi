@@ -17,7 +17,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, logger, tryParseJson } from "@oh-my-pi/pi-utils";
+import { getAgentDir, isEnoent, logger, tryParseJson } from "@oh-my-pi/pi-utils";
 import { YAML } from "bun";
 import { readDirEntries, readFile } from "../capability/fs";
 import type { LoadContext } from "../capability/types";
@@ -81,9 +81,13 @@ interface ScopeDirs {
 }
 
 function scopeDirs(ctx: LoadContext): ScopeDirs {
+	// Mirror `Settings` resolution: user config lives at `getAgentDir()`, which
+	// honors `PI_CODING_AGENT_DIR` / `PI_CONFIG_DIR`. Falling back to
+	// `ctx.home/.omp/agent` would diverge from the canonical user config.yml
+	// that the extension-module loader already reads via `settings.get(...)`.
 	return {
 		project: path.join(ctx.cwd, ".omp"),
-		user: path.join(ctx.home, ".omp", "agent"),
+		user: getAgentDir(),
 	};
 }
 
