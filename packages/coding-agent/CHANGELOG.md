@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Fixed compiled `omp tiny-models download` and local `providers.memoryModel` startup resolving `@huggingface/transformers` runtime metadata from `/$bunfs`, so catalog-based Transformers.js installs use the bundled catalog spec and create the runtime lock parent before installing ([#1763](https://github.com/can1357/oh-my-pi/issues/1763)).
 - Fixed `/review`'s uncommitted-change mode in Jujutsu repositories to read `jj diff --git` from the current workspace, so non-default JJ workspaces include their working-copy changes instead of falling back to the colocated Git checkout.
 - Fixed empty assistant stop retry continuations preserving auto-retry state until a non-empty assistant turn completes or recovery reaches its retry cap.
 

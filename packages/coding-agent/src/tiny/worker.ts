@@ -1,3 +1,4 @@
+import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import * as path from "node:path";
@@ -28,6 +29,7 @@ const STOP_DECODE_WINDOW_TOKENS = 32;
 const MEMORY_COMPLETION_MAX_NEW_TOKENS = 256;
 const TINY_TITLE_SYSTEM_PROMPT = prompt.render(tinyTitleSystemPrompt);
 const TRANSFORMERS_PACKAGE = "@huggingface/transformers";
+const COMPILED_TRANSFORMERS_VERSION_SPEC = process.env.PI_COMPILED_TRANSFORMERS_VERSION_SPEC;
 const sourceRequire = createRequire(import.meta.url);
 const INSTALL_LOCK_ATTEMPTS = 240;
 const INSTALL_LOCK_SLEEP_MS = 250;
@@ -58,17 +60,43 @@ interface TransformersRuntime {
 
 const pipelines = new Map<TinyLocalModelKey, Promise<TextGenerationPipeline>>();
 
-function resolveTransformersVersionSpec(): string {
-	const manifest = packageJson as {
-		optionalDependencies?: Record<string, string>;
-		dependencies?: Record<string, string>;
-	};
+interface TransformersVersionManifest {
+	optionalDependencies?: Record<string, string>;
+	dependencies?: Record<string, string>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+/** Resolves the Transformers.js semver spec used for compiled runtime installs. */
+export function resolveTransformersVersionSpecFromManifest(
+	manifest: TransformersVersionManifest,
+	compiledVersionSpec: string | undefined,
+	readInstalledVersion: () => string,
+): string {
 	const versionSpec =
 		manifest.optionalDependencies?.[TRANSFORMERS_PACKAGE] ?? manifest.dependencies?.[TRANSFORMERS_PACKAGE];
 	if (!versionSpec) throw new Error(`${TRANSFORMERS_PACKAGE} is missing from package.json optionalDependencies`);
 	if (!versionSpec.startsWith("catalog:")) return versionSpec;
-	const installed = sourceRequire(`${TRANSFORMERS_PACKAGE}/package.json`) as { version: string };
+	if (compiledVersionSpec) return compiledVersionSpec;
+	return readInstalledVersion();
+}
+
+function readInstalledTransformersVersion(): string {
+	const installed: unknown = sourceRequire(`${TRANSFORMERS_PACKAGE}/package.json`);
+	if (!isRecord(installed) || typeof installed.version !== "string") {
+		throw new Error(`${TRANSFORMERS_PACKAGE}/package.json is missing a string version`);
+	}
 	return installed.version;
+}
+
+function resolveTransformersVersionSpec(): string {
+	return resolveTransformersVersionSpecFromManifest(
+		packageJson,
+		COMPILED_TRANSFORMERS_VERSION_SPEC,
+		readInstalledTransformersVersion,
+	);
 }
 let cachedTransformersVersionSpec: string | undefined;
 /**
@@ -115,8 +143,9 @@ function getTinyTitleRuntimeDir(): string {
 	);
 }
 
-async function acquireInstallLock(runtimeDir: string): Promise<() => Promise<void>> {
+export async function acquireTinyRuntimeInstallLock(runtimeDir: string): Promise<() => Promise<void>> {
 	const lockDir = `${runtimeDir}.lock`;
+	await fs.mkdir(path.dirname(lockDir), { recursive: true });
 	for (let attempt = 0; attempt < INSTALL_LOCK_ATTEMPTS; attempt++) {
 		try {
 			await fs.mkdir(lockDir);
@@ -129,6 +158,79 @@ async function acquireInstallLock(runtimeDir: string): Promise<() => Promise<voi
 		}
 	}
 	throw new Error(`Timed out waiting for tiny title runtime install lock: ${lockDir}`);
+}
+
+/** Returns the absolute CommonJS entrypoint for the compiled runtime's installed Transformers.js package. */
+export function compiledTransformersEntrypoint(runtimeDir: string): string {
+	return path.join(runtimeDir, "node_modules", "@huggingface", "transformers", "dist", "transformers.node.cjs");
+}
+
+function compiledSharpStubEntrypoint(runtimeDir: string): string {
+	return path.join(runtimeDir, "omp-sharp-stub.cjs");
+}
+const RUNTIME_REQUIRE_REWRITES: readonly string[] = ["onnxruntime-node", "onnxruntime-common", "sharp"];
+
+function splitPackageSpecifier(specifier: string): { packageName: string; subpath: string | undefined } {
+	if (specifier.startsWith("@")) {
+		const firstSlash = specifier.indexOf("/");
+		if (firstSlash < 0) return { packageName: specifier, subpath: undefined };
+		const secondSlash = specifier.indexOf("/", firstSlash + 1);
+		if (secondSlash < 0) return { packageName: specifier, subpath: undefined };
+		return { packageName: specifier.slice(0, secondSlash), subpath: specifier.slice(secondSlash + 1) };
+	}
+	const slash = specifier.indexOf("/");
+	if (slash < 0) return { packageName: specifier, subpath: undefined };
+	return { packageName: specifier.slice(0, slash), subpath: specifier.slice(slash + 1) };
+}
+
+function packageEntrypoint(packageDir: string): string {
+	const manifestText = nodeFs.readFileSync(path.join(packageDir, "package.json"), "utf8");
+	const manifest: unknown = JSON.parse(manifestText);
+	if (isRecord(manifest) && typeof manifest.main === "string") return path.join(packageDir, manifest.main);
+	return path.join(packageDir, "index.js");
+}
+function runtimePackageEntrypoint(runtimeDir: string, specifier: string): string {
+	const { packageName, subpath } = splitPackageSpecifier(specifier);
+	const packageDir = path.join(runtimeDir, "node_modules", ...packageName.split("/"));
+	return subpath ? path.join(packageDir, subpath) : packageEntrypoint(packageDir);
+}
+
+/** Rewrites compiled runtime bare requires to absolute paths Bun app-mode can resolve. */
+export function rewriteCompiledRuntimeRequires(source: string, runtimeDir: string): string {
+	let rewritten = source;
+	for (const specifier of RUNTIME_REQUIRE_REWRITES) {
+		const entrypoint =
+			specifier === "sharp"
+				? compiledSharpStubEntrypoint(runtimeDir)
+				: runtimePackageEntrypoint(runtimeDir, specifier);
+		rewritten = rewritten.replaceAll(`require("${specifier}")`, `require(${JSON.stringify(entrypoint)})`);
+	}
+	rewritten = rewritten.replaceAll(
+		`require(${JSON.stringify(runtimePackageEntrypoint(runtimeDir, "sharp"))})`,
+		`require(${JSON.stringify(compiledSharpStubEntrypoint(runtimeDir))})`,
+	);
+	return rewritten;
+}
+
+async function patchRuntimeRequireFile(filePath: string, runtimeDir: string): Promise<void> {
+	const file = Bun.file(filePath);
+	if (!(await file.exists())) return;
+	const source = await file.text();
+	const rewritten = rewriteCompiledRuntimeRequires(source, runtimeDir);
+	if (rewritten !== source) await Bun.write(filePath, rewritten);
+}
+
+async function patchCompiledRuntimeRequires(runtimeDir: string): Promise<void> {
+	await Bun.write(compiledSharpStubEntrypoint(runtimeDir), "module.exports = {};\n");
+	await patchRuntimeRequireFile(compiledTransformersEntrypoint(runtimeDir), runtimeDir);
+	await patchRuntimeRequireFile(
+		path.join(runtimeDir, "node_modules", "onnxruntime-node", "dist", "index.js"),
+		runtimeDir,
+	);
+	await patchRuntimeRequireFile(
+		path.join(runtimeDir, "node_modules", "onnxruntime-node", "dist", "binding.js"),
+		runtimeDir,
+	);
 }
 
 async function isCompiledRuntimeInstalled(runtimeDir: string): Promise<boolean> {
@@ -159,9 +261,29 @@ async function readPipe(stream: ReadableStream<Uint8Array> | null): Promise<stri
 	return new Response(stream).text();
 }
 
+interface RuntimeInstallCommand {
+	cmd: string[];
+	cwd: string;
+	env: Record<string, string | undefined>;
+}
+
+/** Builds the Bun install invocation used for compiled Transformers.js runtime dependencies. */
+export function createRuntimeInstallCommand(
+	runtimeDir: string,
+	env: Record<string, string | undefined>,
+): RuntimeInstallCommand {
+	return {
+		cmd: [process.execPath, "install", "--production", "--force", "--backend=copyfile"],
+		cwd: runtimeDir,
+		env: { ...env, BUN_BE_BUN: "1" },
+	};
+}
+
 async function runRuntimeInstall(runtimeDir: string): Promise<void> {
-	const proc = Bun.spawn([process.execPath, "install", "--cwd", runtimeDir, "--production"], {
-		env: { ...Bun.env, BUN_BE_BUN: "1" },
+	const install = createRuntimeInstallCommand(runtimeDir, Bun.env);
+	const proc = Bun.spawn(install.cmd, {
+		cwd: install.cwd,
+		env: install.env,
 		stdout: "pipe",
 		stderr: "pipe",
 	});
@@ -200,15 +322,22 @@ async function ensureCompiledTransformersRuntime(
 	modelKey: TinyLocalModelKey,
 ): Promise<string> {
 	const runtimeDir = getTinyTitleRuntimeDir();
-	if (await isCompiledRuntimeInstalled(runtimeDir)) return runtimeDir;
+	if (await isCompiledRuntimeInstalled(runtimeDir)) {
+		await patchCompiledRuntimeRequires(runtimeDir);
+		return runtimeDir;
+	}
 
 	sendRuntimeInstallProgress(transport, requestId, modelKey, "initiate");
-	const releaseLock = await acquireInstallLock(runtimeDir);
+	const releaseLock = await acquireTinyRuntimeInstallLock(runtimeDir);
 	try {
-		if (await isCompiledRuntimeInstalled(runtimeDir)) return runtimeDir;
+		if (await isCompiledRuntimeInstalled(runtimeDir)) {
+			await patchCompiledRuntimeRequires(runtimeDir);
+			return runtimeDir;
+		}
 		await writeRuntimeManifest(runtimeDir);
 		sendRuntimeInstallProgress(transport, requestId, modelKey, "download");
 		await runRuntimeInstall(runtimeDir);
+		await patchCompiledRuntimeRequires(runtimeDir);
 		sendRuntimeInstallProgress(transport, requestId, modelKey, "done");
 		return runtimeDir;
 	} finally {
@@ -232,8 +361,9 @@ async function loadTransformers(
 	transformersRuntime = (async () => {
 		if (!isCompiledBinary()) return configureTransformers(sourceRequire(TRANSFORMERS_PACKAGE) as TransformersRuntime);
 		const runtimeDir = await ensureCompiledTransformersRuntime(transport, requestId, modelKey);
-		const require_ = createRequire(path.join(runtimeDir, "package.json"));
-		return configureTransformers(require_(TRANSFORMERS_PACKAGE) as TransformersRuntime);
+		const entrypoint = compiledTransformersEntrypoint(runtimeDir);
+		const require_ = createRequire(entrypoint);
+		return configureTransformers(require_(entrypoint) as TransformersRuntime);
 	})().catch(error => {
 		transformersRuntime = null;
 		throw error;

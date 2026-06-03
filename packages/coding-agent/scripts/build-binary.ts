@@ -4,9 +4,64 @@ import * as path from "node:path";
 
 const packageDir = path.join(import.meta.dir, "..");
 const outputPath = path.join(packageDir, "dist", "omp");
+const repoRoot = path.join(packageDir, "..", "..");
+const TRANSFORMERS_PACKAGE = "@huggingface/transformers";
+
+interface PackageManifest {
+	dependencies?: Record<string, string>;
+	optionalDependencies?: Record<string, string>;
+	workspaces?: {
+		catalog?: Record<string, string>;
+	};
+}
 
 function shouldAdhocSignDarwinBinary(): boolean {
 	return process.platform === "darwin";
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function readStringMap(value: unknown): Record<string, string> | undefined {
+	if (!isRecord(value)) return undefined;
+	const map: Record<string, string> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry === "string") map[key] = entry;
+	}
+	return map;
+}
+
+async function readPackageManifest(filePath: string): Promise<PackageManifest> {
+	const value: unknown = await Bun.file(filePath).json();
+	if (!isRecord(value)) throw new Error(`Invalid package manifest: ${filePath}`);
+
+	const manifest: PackageManifest = {};
+	const dependencies = readStringMap(value.dependencies);
+	const optionalDependencies = readStringMap(value.optionalDependencies);
+	if (dependencies) manifest.dependencies = dependencies;
+	if (optionalDependencies) manifest.optionalDependencies = optionalDependencies;
+
+	if (isRecord(value.workspaces)) {
+		const catalog = readStringMap(value.workspaces.catalog);
+		if (catalog) manifest.workspaces = { catalog };
+	}
+	return manifest;
+}
+
+function dependencyVersionSpec(manifest: PackageManifest, packageName: string): string | undefined {
+	return manifest.optionalDependencies?.[packageName] ?? manifest.dependencies?.[packageName];
+}
+
+async function resolveTransformersBuildVersionSpec(): Promise<string> {
+	const manifest = await readPackageManifest(path.join(packageDir, "package.json"));
+	const versionSpec = dependencyVersionSpec(manifest, TRANSFORMERS_PACKAGE);
+	if (!versionSpec) throw new Error(`${TRANSFORMERS_PACKAGE} is missing from package.json optionalDependencies`);
+	if (!versionSpec.startsWith("catalog:")) return versionSpec;
+
+	const rootManifest = await readPackageManifest(path.join(repoRoot, "package.json"));
+	const catalogSpec = rootManifest.workspaces?.catalog?.[TRANSFORMERS_PACKAGE];
+	if (!catalogSpec) throw new Error(`${TRANSFORMERS_PACKAGE} is missing from the root workspace catalog`);
+	return catalogSpec;
 }
 
 async function runCommand(command: string[], env: NodeJS.ProcessEnv = Bun.env): Promise<void> {
@@ -28,6 +83,7 @@ async function main(): Promise<void> {
 		await runCommand(["bun", "--cwd=../natives", "run", "embed:native"]);
 		try {
 			const buildEnv = shouldAdhocSignDarwinBinary() ? { ...Bun.env, BUN_NO_CODESIGN_MACHO_BINARY: "1" } : Bun.env;
+			const transformersVersionSpec = await resolveTransformersBuildVersionSpec();
 			await runCommand(
 				[
 					"bun",
@@ -40,6 +96,8 @@ async function main(): Promise<void> {
 					"--keep-names",
 					"--define",
 					'process.env.PI_COMPILED="true"',
+					"--define",
+					`process.env.PI_COMPILED_TRANSFORMERS_VERSION_SPEC=${JSON.stringify(transformersVersionSpec)}`,
 					"--external",
 					"mupdf",
 					"--root",
