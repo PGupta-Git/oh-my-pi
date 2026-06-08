@@ -10,6 +10,8 @@ Read files, directories, archives, SQLite databases, images, documents, internal
 
 - `path` — required. Local path, internal URI (`skill://`, `agent://`, `artifact://`, `memory://`, `rule://`, `local://`, `mcp://`), or URL. Append `:<sel>` for line ranges, raw mode, or special modes (e.g. `src/foo.ts:50-200`, `src/foo.ts:raw`, `db.sqlite:users:42`).
 
+  Examples: `read(path="rule://development-rules")`, `read(path="skill://ck:debug")`, `read(path="memory://root")`.
+
 ## Selectors
 
 Append `:<sel>` to `path`. The bare path falls back to the default mode.
@@ -75,7 +77,7 @@ For `.sqlite`, `.sqlite3`, `.db`, `.db3`:
 <critical>
 - You MUST use `read` for every file, directory, archive, and URL inspection. `cat`, `head`, `tail`, `less`, `more`, `ls`, `tar`, `unzip`, `curl`, `wget` are FORBIDDEN — any such bash call is a bug, regardless of how short or convenient it looks.
 - You MUST prefer `read` over a browser/puppeteer tool for URL content; only reach for a browser when `read` cannot deliver reasonable content.
-- You MUST always include `path`. NEVER call `read` with `{}`.
+- You MUST always include `path`. NEVER call `read` with `{}` or any empty argument object.
 - For line ranges, append the selector to `path` (`path="src/foo.ts:50-200"`, `path="src/foo.ts:50+150"`). NEVER substitute `sed -n`, `awk NR`, or `head`/`tail` pipelines.
 - Summary footer says `read <path>:raw …`? Re-issue the exact selector it names. NEVER guess what's inside `..` / `…` markers — they carry no content.
 - You MAY combine selectors with URL reads and internal URIs; both paginate the cached resolved output.

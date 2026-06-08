@@ -264,6 +264,13 @@ describe("Coding Agent Tools", () => {
 	});
 
 	describe("read tool", () => {
+		it("describes internal URI reads and rejects empty argument objects", () => {
+			expect(readTool.description).toContain('read(path="rule://development-rules")');
+			expect(readTool.description).toContain('read(path="skill://ck:debug")');
+			expect(readTool.description).toContain('read(path="memory://root")');
+			expect(readTool.description).toContain("NEVER call `read` with `{}` or any empty argument object.");
+		});
+
 		it("should read file contents that fit within limits", async () => {
 			const testFile = path.join(testDir, "test.txt");
 			const content = "Hello, world!\nLine 2\nLine 3";

@@ -10,6 +10,7 @@
 - New `tts` tool synthesises speech via xAI Grok Voice behind the disabled-by-default `tts.enabled` setting. Built-in voices `ara`, `eve` (default), `leo`, `rex`, `sal`; custom voice IDs also accepted. Output codec inferred from the `output_path` suffix (`.wav` → `wav`, else `mp3`). Up to 15,000 characters per request.
 
 ### Fixed
+- Fixed the `read` tool prompt to show concrete internal URI calls and explicitly forbid empty argument objects ([#1459](https://github.com/can1357/oh-my-pi/issues/1459)).
 
 - Fixed plan-mode re-entry after approval reopening a fresh `local://PLAN.md` instead of the approved titled plan artifact, which could duplicate plan content and fail approval on an existing destination.
 - Fixed `read` URL reader mode aborting after a stalled Jina request instead of falling back to trafilatura/lynx/native: Jina (and Parallel extract) now have their own per-attempt sub-budget capped at 10s, the catch handler honours only real user cancellation, and the in-process native renderer is always attempted on already-loaded HTML ([#1449](https://github.com/can1357/oh-my-pi/issues/1449))
