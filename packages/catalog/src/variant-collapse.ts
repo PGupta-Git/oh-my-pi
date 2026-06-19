@@ -93,16 +93,30 @@ export interface VariantCollapseTable {
 
 /** `X` + `X-thinking` hand family: off routes to the bare id, efforts to `-thinking`. */
 function thinkingPair(baseId: string, name: string): EffortVariantFamily {
+	let offModel = baseId;
+	let thinkingModel = `${baseId}-thinking`;
+	if (baseId === "claude-sonnet-4-6") {
+		thinkingModel = "claude-sonnet-4-6";
+	} else if (baseId === "claude-opus-4-6") {
+		offModel = "claude-opus-4-6-thinking";
+		thinkingModel = "claude-opus-4-6-thinking";
+	} else if (baseId === "claude-sonnet-4-5") {
+		thinkingModel = "claude-sonnet-4-5";
+	} else if (baseId === "claude-opus-4-5") {
+		offModel = "claude-opus-4-5-thinking";
+		thinkingModel = "claude-opus-4-5-thinking";
+	}
+
 	return {
 		id: baseId,
 		name,
-		members: [baseId, `${baseId}-thinking`],
+		members: [offModel, thinkingModel],
 		routing: {
-			off: baseId,
-			[Effort.Minimal]: `${baseId}-thinking`,
-			[Effort.Low]: `${baseId}-thinking`,
-			[Effort.Medium]: `${baseId}-thinking`,
-			[Effort.High]: `${baseId}-thinking`,
+			off: offModel,
+			[Effort.Minimal]: thinkingModel,
+			[Effort.Low]: thinkingModel,
+			[Effort.Medium]: thinkingModel,
+			[Effort.High]: thinkingModel,
 		},
 		// Thinking-off routes to the non-thinking backing id, where omitting
 		// thinkingConfig is already correct — no suppressWhenOff.

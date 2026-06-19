@@ -60,6 +60,9 @@ export const ANTIGRAVITY_MODEL_WIRE_PROFILES: Readonly<Record<string, Antigravit
 	"gemini-3-flash-agent": { modelEnum: "MODEL_PLACEHOLDER_M132", maxOutputTokens: 65536 },
 	"gemini-3.1-pro-low": { modelEnum: "MODEL_PLACEHOLDER_M36", maxOutputTokens: 65535 },
 	"gemini-pro-agent": { modelEnum: "MODEL_PLACEHOLDER_M16", maxOutputTokens: 65535 },
+	"claude-sonnet-4-6": { modelEnum: "MODEL_PLACEHOLDER_M35", maxOutputTokens: 64000 },
+	"claude-opus-4-6-thinking": { modelEnum: "MODEL_PLACEHOLDER_M26", maxOutputTokens: 64000 },
+	"gpt-oss-120b-medium": { modelEnum: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", maxOutputTokens: 65536 },
 };
 export function getAntigravityModelWireProfile(wireModelId: string): AntigravityModelWireProfile | undefined {
 	return ANTIGRAVITY_MODEL_WIRE_PROFILES[wireModelId];
