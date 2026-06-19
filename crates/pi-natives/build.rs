@@ -8,7 +8,28 @@ use std::{
 fn main() {
 	napi_build::setup();
 	generate_minimizer_builtin_filters();
+	if check_alloc_error_hook() {
+		println!("cargo:rustc-cfg=has_alloc_error_hook");
+	}
 }
+
+fn check_alloc_error_hook() -> bool {
+	let rustc = env::var_os("RUSTC").unwrap_or_else(|| std::ffi::OsString::from("rustc"));
+	let out_dir = env::var_os("OUT_DIR").unwrap();
+	let test_file = Path::new(&out_dir).join("test_alloc_hook.rs");
+	if fs::write(&test_file, "#![feature(alloc_error_hook)] fn main() {}").is_err() {
+		return false;
+	}
+	let status = std::process::Command::new(rustc)
+		.arg("--crate-type=bin")
+		.arg("--out-dir")
+		.arg(&out_dir)
+		.arg(&test_file)
+		.status();
+
+	status.map(|s| s.success()).unwrap_or(false)
+}
+
 
 fn generate_minimizer_builtin_filters() {
 	let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set");

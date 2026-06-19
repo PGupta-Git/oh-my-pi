@@ -144,10 +144,10 @@ describe("collapseEffortVariants", () => {
 		expect(out[0]?.thinking?.suppressWhenOff).toBeUndefined();
 		expect(out[0]?.thinking?.effortRouting).toEqual({
 			off: "claude-sonnet-4-6",
-			minimal: "claude-sonnet-4-6-thinking",
-			low: "claude-sonnet-4-6-thinking",
-			medium: "claude-sonnet-4-6-thinking",
-			high: "claude-sonnet-4-6-thinking",
+			minimal: "claude-sonnet-4-6",
+			low: "claude-sonnet-4-6",
+			medium: "claude-sonnet-4-6",
+			high: "claude-sonnet-4-6",
 		});
 	});
 
@@ -159,13 +159,13 @@ describe("collapseEffortVariants", () => {
 
 		expect(out).toHaveLength(1);
 		expect(out[0]?.id).toBe("claude-sonnet-4-6");
-		expect(out[0]?.requestModelId).toBe("claude-sonnet-4-6");
+		expect(out[0]?.requestModelId).toBeUndefined();
 		expect(out[0]?.thinking?.effortRouting).toEqual({
 			off: "claude-sonnet-4-6",
-			minimal: "claude-sonnet-4-6-thinking",
-			low: "claude-sonnet-4-6-thinking",
-			medium: "claude-sonnet-4-6-thinking",
-			high: "claude-sonnet-4-6-thinking",
+			minimal: "claude-sonnet-4-6",
+			low: "claude-sonnet-4-6",
+			medium: "claude-sonnet-4-6",
+			high: "claude-sonnet-4-6",
 		});
 	});
 
@@ -174,9 +174,7 @@ describe("collapseEffortVariants", () => {
 
 		expect(out[0]?.id).toBe("claude-opus-4-6");
 		expect(out[0]?.requestModelId).toBe("claude-opus-4-6-thinking");
-		// The off route targeted the absent bare id — dropped; off falls back
-		// to requestModelId, preserving today's served default.
-		expect(out[0]?.thinking?.effortRouting?.off).toBeUndefined();
+		expect(out[0]?.thinking?.effortRouting?.off).toBe("claude-opus-4-6-thinking");
 		expect(out[0]?.thinking?.effortRouting?.[Effort.High]).toBe("claude-opus-4-6-thinking");
 	});
 

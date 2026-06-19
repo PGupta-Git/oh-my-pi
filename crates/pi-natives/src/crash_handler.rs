@@ -59,6 +59,7 @@ pub fn install() {
 			prev_panic(info);
 		}));
 
+		#[cfg(has_alloc_error_hook)]
 		std::alloc::set_alloc_error_hook(|layout| {
 			// Print the canonical line before doing anything allocation-prone.
 			// If this is genuine process-wide OOM, report formatting/path work may
