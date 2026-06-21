@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed OpenCode `opencode.json` MCP server discovery failing when `command` is an array of strings (e.g. `["npx", "-y", "pkg"]`): the first element is now used as the executable and the rest are prepended to `args`, matching OpenCode's schema ([#3180](https://github.com/can1357/oh-my-pi/issues/3180))
+- Fixed OpenCode MCP server environment variables being silently dropped: the parser now reads the `environment` key (OpenCode's native field) and falls back to `env` ([#3180](https://github.com/can1357/oh-my-pi/issues/3180))
+
+
 ## [16.1.10] - 2026-06-21
 
 ### Added

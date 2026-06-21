@@ -91,9 +91,12 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 /** OpenCode MCP server config (from opencode.json "mcp" key) */
 interface OpenCodeMCPConfig {
 	type?: "local" | "remote";
-	command?: string;
+	/** OpenCode allows command to be an array of strings (executable + args) */
+	command?: string | string[];
 	args?: string[];
+	/** OpenCode uses "environment" as the env-vars key; "env" accepted as fallback */
 	env?: Record<string, string>;
+	environment?: Record<string, string>;
 	url?: string;
 	headers?: Record<string, string>;
 	enabled?: boolean;
@@ -161,11 +164,26 @@ function extractMCPServers(
 			transport = "stdio";
 		}
 
+		// Normalise command array → scalar command + prepended args
+		const rawCmd = serverConfig.command;
+		const cmdStr = Array.isArray(rawCmd) ? rawCmd[0] : rawCmd;
+		const prependedArgs: string[] = Array.isArray(rawCmd) ? (rawCmd.slice(1) as string[]) : [];
+		const explicitArgs: string[] = Array.isArray(serverConfig.args) ? (serverConfig.args as string[]) : [];
+		const allArgs = [...prependedArgs, ...explicitArgs];
+
+		// OpenCode uses "environment" as the env-vars key; fall back to "env"
+		const envVars =
+			serverConfig.environment && typeof serverConfig.environment === "object"
+				? serverConfig.environment
+				: serverConfig.env && typeof serverConfig.env === "object"
+					? serverConfig.env
+					: undefined;
+
 		items.push({
 			name,
-			command: serverConfig.command,
-			args: Array.isArray(serverConfig.args) ? (serverConfig.args as string[]) : undefined,
-			env: serverConfig.env && typeof serverConfig.env === "object" ? serverConfig.env : undefined,
+			command: cmdStr,
+			args: allArgs.length > 0 ? allArgs : undefined,
+			env: envVars,
 			url: typeof serverConfig.url === "string" ? serverConfig.url : undefined,
 			headers: serverConfig.headers && typeof serverConfig.headers === "object" ? serverConfig.headers : undefined,
 			enabled: serverConfig.enabled,
