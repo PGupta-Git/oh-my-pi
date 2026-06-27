@@ -15,6 +15,25 @@ describe("detectTerminalId", () => {
 	it("recognizes Warp before the true-color fallback", () => {
 		expect(detectTerminalId({ TERM_PROGRAM: "WarpTerminal", COLORTERM: "truecolor" })).toBe("warp");
 	});
+
+	it("recognizes VTE-based terminals via VTE_VERSION", () => {
+		expect(detectTerminalId({ VTE_VERSION: "8400", COLORTERM: "truecolor" })).toBe("vte");
+	});
+
+	it("recognizes VTE before the generic trueColor fallback", () => {
+		// Ptyxis sets COLORTERM=truecolor but not TERM_PROGRAM — VTE_VERSION must
+		// win over the COLORTERM branch so notifications use OSC 9, not BEL.
+		expect(detectTerminalId({ VTE_VERSION: "6800", COLORTERM: "truecolor" })).toBe("vte");
+	});
+
+	it("falls through to trueColor when COLORTERM=truecolor and no VTE_VERSION", () => {
+		expect(detectTerminalId({ COLORTERM: "truecolor" })).toBe("trueColor");
+	});
+
+	it("vte profile uses OSC 9 notifications", () => {
+		const info = getTerminalInfo("vte");
+		expect(info.notifyProtocol).toBe(NotifyProtocol.Osc9);
+	});
 });
 
 describe("synchronizedOutputUserOverride", () => {

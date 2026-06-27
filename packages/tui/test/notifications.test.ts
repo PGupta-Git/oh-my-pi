@@ -234,4 +234,21 @@ describe("terminal notifications", () => {
 			terminal.stop();
 		}
 	});
+
+	it("VTE terminal (Ptyxis/GNOME Terminal) sends OSC 9 notification, not a silent BEL", () => {
+		// VTE_VERSION is present in the environment but TERM_PROGRAM is not —
+		// the exact setup Ptyxis produces on Fedora. Verify that detectTerminalId
+		// resolves to "vte" and that sendNotification emits an OSC 9 sequence
+		// rather than the BEL (\x07) that was silently dropped before this fix.
+		mutableTerminal.notifyProtocol = NotifyProtocol.Osc9;
+		const writes: string[] = [];
+		vi.spyOn(process.stdout, "write").mockImplementation(chunk => {
+			writes.push(typeof chunk === "string" ? chunk : chunk.toString());
+			return true;
+		});
+
+		TERMINAL.sendNotification("ping");
+
+		expect(writes).toEqual(["\x1b]9;ping\x1b\\"]);
+	});
 });

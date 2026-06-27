@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `completion.notify` and `ask.notify` desktop notifications being silently dropped on VTE-based terminals (Ptyxis, GNOME Terminal, Tilix, …) on Linux. These terminals set `VTE_VERSION` but not `TERM_PROGRAM`, causing `detectTerminalId` to fall through to the `trueColor` profile whose `notifyProtocol` is `Bell` (`\x07`). VTE does not surface a bare BEL as a desktop notification, so no toast ever appeared. `detectTerminalId` now checks `VTE_VERSION` before the `COLORTERM` fallback and resolves to a new `"vte"` profile with `NotifyProtocol.Osc9`, which VTE ≥ 6800 routes to the desktop notification system.
+
 ## [16.2.0] - 2026-06-27
 
 ### Added

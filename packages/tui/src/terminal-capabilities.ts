@@ -29,6 +29,7 @@ export type TerminalId =
 	| "vscode"
 	| "alacritty"
 	| "warp"
+	| "vte"
 	| "base"
 	| "trueColor";
 
@@ -417,6 +418,11 @@ const KNOWN_TERMINALS = Object.freeze({
 	// detectKittyUnicodePlaceholdersSupport correctly excludes it). It does not
 	// honor OSC 8 yet (the escape renders as visible text), so hyperlinks stay off.
 	warp: new TerminalInfo("warp", ImageProtocol.Kitty, true, false, NotifyProtocol.Bell),
+	// VTE-based terminals (Ptyxis, GNOME Terminal, Tilix, …) identify via
+	// VTE_VERSION. They do not set TERM_PROGRAM. VTE ≥ 6800 supports OSC 9
+	// desktop notifications; use Osc9 so completion/ask toasts reach the
+	// desktop. No Kitty graphics or DECCARA on VTE.
+	vte: new TerminalInfo("vte", null, true, true, NotifyProtocol.Osc9),
 });
 
 /** Resolve terminal identity from environment markers used by common emulators. */
@@ -435,6 +441,7 @@ export function detectTerminalId(env: NodeJS.ProcessEnv = Bun.env): TerminalId {
 		TERM_PROGRAM,
 		TERM,
 		COLORTERM,
+		VTE_VERSION,
 	} = env;
 
 	if (KITTY_WINDOW_ID) return "kitty";
@@ -455,6 +462,11 @@ export function detectTerminalId(env: NodeJS.ProcessEnv = Bun.env): TerminalId {
 	}
 
 	if (TERM?.toLowerCase().includes("ghostty")) return "ghostty";
+
+	// VTE-based terminals (Ptyxis, GNOME Terminal, Tilix, …) set VTE_VERSION
+	// but not TERM_PROGRAM. Check this before the generic COLORTERM=truecolor
+	// fallback so they get OSC 9 notifications instead of a silent BEL.
+	if (VTE_VERSION) return "vte";
 
 	if (COLORTERM) {
 		if (caseEq(COLORTERM, "truecolor") || caseEq(COLORTERM, "24bit")) return "trueColor";
