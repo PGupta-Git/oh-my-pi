@@ -4,6 +4,7 @@ import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { ImageContent } from "@oh-my-pi/pi-ai";
 import { type AutocompleteProvider, matchesKey, type SlashCommand } from "@oh-my-pi/pi-tui";
 import { $env, isEnoent, logger, sanitizeText } from "@oh-my-pi/pi-utils";
+import type { AppKeybinding } from "../../config/keybindings";
 import { isSettingsInitialized, settings } from "../../config/settings";
 import { resolveLocalRoot } from "../../internal-urls";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
@@ -22,6 +23,7 @@ import { isTinyTitleLocalModelKey } from "../../tiny/models";
 import { isLowSignalTitleInput } from "../../tiny/text";
 import { tinyTitleClient } from "../../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";
+import type { ApprovalMode } from "../../tools/approval";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/render-utils";
 import {
 	copyToClipboard,
@@ -84,6 +86,13 @@ interface PasteTarget {
 function hasPasteText(value: unknown): value is PasteTarget {
 	return typeof value === "object" && value !== null && typeof (value as PasteTarget).pasteText === "function";
 }
+
+const APPROVAL_MODE_SEQUENCE = ["always-ask", "write", "yolo"] as const satisfies readonly ApprovalMode[];
+const APPROVAL_MODE_ACTIONS = [
+	["app.approvalMode.alwaysAsk", "always-ask"],
+	["app.approvalMode.write", "write"],
+	["app.approvalMode.yolo", "yolo"],
+] as const satisfies readonly (readonly [AppKeybinding, ApprovalMode])[];
 
 function pythonCommandPrefixLength(trimmedText: string): 0 | 1 | 2 {
 	if (trimmedText.charCodeAt(0) !== 36 /* $ */) return 0;
@@ -466,6 +475,14 @@ export class InputController {
 		const planModeKeys = this.ctx.keybindings.getKeys("app.plan.toggle");
 		for (const key of planModeKeys) {
 			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.handlePlanModeCommand());
+		}
+		for (const key of this.ctx.keybindings.getKeys("app.approvalMode.cycle")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => this.cycleApprovalMode());
+		}
+		for (const [action, mode] of APPROVAL_MODE_ACTIONS) {
+			for (const key of this.ctx.keybindings.getKeys(action)) {
+				this.ctx.editor.setCustomKeyHandler(key, () => this.setApprovalMode(mode));
+			}
 		}
 
 		for (const key of this.ctx.keybindings.getKeys("app.session.new")) {
@@ -1670,6 +1687,28 @@ export class InputController {
 		} catch {
 			this.ctx.showWarning("Failed to copy to clipboard");
 		}
+	}
+
+	cycleApprovalMode(): void {
+		if (this.ctx.focusedAgentId) {
+			this.ctx.showStatus("Approval mode applies to the main session — press ←← to return first");
+			return;
+		}
+		const current = this.ctx.settings.get("tools.approvalMode") as ApprovalMode;
+		const currentIndex = APPROVAL_MODE_SEQUENCE.indexOf(current);
+		const next = APPROVAL_MODE_SEQUENCE[(currentIndex + 1) % APPROVAL_MODE_SEQUENCE.length] ?? "always-ask";
+		this.setApprovalMode(next);
+	}
+
+	setApprovalMode(mode: ApprovalMode): void {
+		if (this.ctx.focusedAgentId) {
+			this.ctx.showStatus("Approval mode applies to the main session — press ←← to return first");
+			return;
+		}
+		this.ctx.session.setRuntimeApprovalMode(mode);
+		this.ctx.statusLine.invalidate();
+		this.ctx.showStatus(`Approval mode: ${mode}`);
+		this.ctx.ui.requestRender();
 	}
 
 	cycleThinkingLevel(): void {

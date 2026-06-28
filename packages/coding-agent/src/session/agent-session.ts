@@ -30,6 +30,8 @@ import {
 	type AgentMessage,
 	type AgentState,
 	type AgentTool,
+	type AgentToolContext,
+	type AgentToolExecFn,
 	type AgentTurnEndContext,
 	AppendOnlyContextManager,
 	type AsideMessage,
@@ -279,6 +281,7 @@ import {
 	isMCPToolName,
 	selectDiscoverableToolNamesByServer,
 } from "../tool-discovery/tool-index";
+import type { ApprovalMode } from "../tools/approval";
 import { assertEditableFile } from "../tools/auto-generated-guard";
 import { normalizeToolNames } from "../tools/builtin-names";
 import type { CheckpointState } from "../tools/checkpoint";
@@ -523,6 +526,7 @@ export interface AgentSessionConfig {
 	modelRegistry: ModelRegistry;
 	/** Tool registry for LSP and settings */
 	toolRegistry?: Map<string, AgentTool>;
+	getToolContext?: () => AgentToolContext;
 	/** Tool names whose current registry entry is still the built-in implementation. */
 	builtInToolNames?: Iterable<string>;
 	/** Current session pre-LLM message transform pipeline */
@@ -1310,6 +1314,7 @@ export class AgentSession {
 	readonly yieldQueue: YieldQueue;
 	fileSnapshotStore?: InMemorySnapshotStore;
 	#autoApprove: boolean;
+	#getToolContext: (() => AgentToolContext) | undefined;
 
 	#powerAssertion: MacOSPowerAssertion | undefined;
 
@@ -1748,6 +1753,7 @@ export class AgentSession {
 		this.sessionManager = config.sessionManager;
 		this.settings = config.settings;
 		this.#autoApprove = config.autoApprove === true;
+		this.#getToolContext = config.getToolContext;
 		// Power assertions are taken per turn (see #beginInFlight); nothing acquired here.
 		this.#evalKernelOwnerId = config.evalKernelOwnerId ?? `agent-session:${Snowflake.next()}`;
 		this.#parentEvalSessionId = config.parentEvalSessionId;
@@ -1959,6 +1965,15 @@ export class AgentSession {
 		this.#unsubscribeAgent = this.agent.subscribe(this.#handleAgentEvent);
 		// Re-evaluate append-only context mode when the setting changes at runtime.
 		this.#unsubscribeAppendOnly = onAppendOnlyModeChanged(_value => this.#syncAppendOnlyContext(this.model));
+	}
+
+	getRuntimeAutoApprove(): boolean {
+		return this.#autoApprove;
+	}
+
+	setRuntimeApprovalMode(mode: ApprovalMode): void {
+		this.settings.override("tools.approvalMode", mode);
+		this.#autoApprove = mode === "yolo";
 	}
 	// -------------------------------------------------------------------------
 	// Advisor runtime lifecycle
@@ -5319,7 +5334,18 @@ export class AgentSession {
 	 * Get a tool by name from the registry.
 	 */
 	getToolByName(name: string): AgentTool | undefined {
-		return this.#toolRegistry.get(name);
+		const tool = this.#toolRegistry.get(name);
+		if (!tool || !this.#getToolContext) return tool;
+		const getToolContext = this.#getToolContext;
+		return new Proxy(tool, {
+			get(target, prop, receiver) {
+				if (prop !== "execute") return Reflect.get(target, prop, receiver);
+				const execute: AgentToolExecFn = function (toolCallId, args, signal, onUpdate, context) {
+					return target.execute(toolCallId, args, signal, onUpdate, context ?? getToolContext());
+				};
+				return execute;
+			},
+		});
 	}
 
 	/** True when the current registry entry for `name` came from a built-in factory. */
